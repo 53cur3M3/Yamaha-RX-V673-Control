@@ -1,0 +1,1162 @@
+#!/bin/bash
+# Yamaha RX-V673 Amplifier Control Script
+# Script assumes you want to play music from USB drive connected to amp
+
+# Update ampIP with your amplifiers IP
+ampIP='10.1.1.1'
+# Without a 300 milli-second sleep between commands; behaviour is unreliable
+sleepTime=0.3
+# Select which Zone you want script to control
+#zone='Main_Zone'
+zone='Zone_2'
+
+
+function ampCall {
+  if [ "$1" != "" ]; then
+    #echo "$1"
+    resp=`curl -s -k -X $'POST' \
+      -H $"Host: ${ampIP}" \
+      -H $'Content-Type: text/xml' \
+      -H $'Accept: */*' \
+      -H $'Accept-Encoding: gzip, deflate' \
+      -H $'Connection: close' \
+      --data-binary "${1}" \
+      "http://${ampIP}/YamahaRemoteControl/ctrl"`
+    sleep ${sleepTime}
+  else
+    echo "Error ampCall: No data received"
+  fi
+}
+
+function ampStatus {
+    # Basic Status
+    ampCall "<YAMAHA_AV cmd=\"GET\"><${zone}><Basic_Status>GetParam</Basic_Status></${zone}></YAMAHA_AV>"
+    echo "$resp" | grep -o "<Power>[A-Za-z]*" | sed 's/<//;s/>/: /'
+    echo "$resp" | grep -o "<Input_Sel_Item_Info><Param>[A-Za-z]*" | sed 's/<Param>//;s/<//;s/_/ /g;s/>/: /'
+
+#    # Input Selection
+#    ampCall "<YAMAHA_AV cmd=\"GET\"><${zone}><Input><Input_Sel>GetParam</Input_Sel></Input></${zone}></YAMAHA_AV>"
+#    echo "$resp"
+
+    # Play Info
+    ampCall "<YAMAHA_AV cmd=\"GET\"><USB><Play_Info>GetParam</Play_Info></USB></YAMAHA_AV>"
+    echo "$resp" | grep -o "<Artist>[^<]*" | sed 's/<//;s/>/: /'
+    echo "$resp" | grep -o "<Album>[^<]*" | sed 's/<//;s/>/: /'
+    echo "$resp" | grep -o "<Song>[^<]*" | sed 's/<//;s/>/: /'
+}
+
+function ampOff {
+  ampCall "<YAMAHA_AV cmd=\"PUT\"><${zone}><Power_Control><Power>Standby</Power></Power_Control></${zone}></YAMAHA_AV>"
+}
+
+function ampOn {
+  ampCall "<YAMAHA_AV cmd=\"PUT\"><${zone}><Power_Control><Power>On</Power></Power_Control></${zone}></YAMAHA_AV>"
+}
+
+function ampUsbInput {
+  ampCall "<YAMAHA_AV cmd=\"PUT\"><${zone}><Input><Input_Sel>USB</Input_Sel></Input></${zone}></YAMAHA_AV>"
+}
+
+function ampPause {
+  ampCall "<YAMAHA_AV cmd=\"PUT\"><USB><Play_Control><Playback>Pause</Playback></Play_Control></USB></YAMAHA_AV>"
+}
+
+function ampVol () {
+  # Default Volume (negative dB) multipled by 10, as it doesn't include the decimal point, so -39.0dB sent as -390
+  # Set default volume to be 49.0dB
+  vol=490
+  if [ "$1" != "" ] && [ "$1" -ge 300 ] && [ "$1" -le 600 ]; then
+    vol=${1};
+  fi
+  if [ "$1" != "" ] && [ "$1" -ge 30 ] && [ "$1" -le 60 ]; then
+    vol="${1}0";
+  fi
+  ampCall "<YAMAHA_AV cmd=\"PUT\"><${zone}><Volume><Lvl><Val>-${vol}</Val><Exp>1</Exp><Unit>dB</Unit></Lvl></Volume></${zone}></YAMAHA_AV>"
+}
+
+function ampPlaySecularMusic() {
+  # Ensure we're at the USB root, assuming it goes no more than six directories deep
+  for i in {1..6}; do
+    ampCall "<YAMAHA_AV cmd=\"PUT\"><USB><List_Control><Cursor>Return</Cursor></List_Control></USB></YAMAHA_AV>"
+  done
+
+  # Select Audio Directory
+  ampCall "<YAMAHA_AV cmd=\"PUT\"><USB><List_Control><Direct_Sel>Line_2</Direct_Sel></List_Control></USB></YAMAHA_AV>"
+
+  # Select Music
+  ampCall "<YAMAHA_AV cmd=\"PUT\"><USB><List_Control><Direct_Sel>Line_1</Direct_Sel></List_Control></USB></YAMAHA_AV>"
+
+  # Select Secular
+  ampCall "<YAMAHA_AV cmd=\"PUT\"><USB><List_Control><Direct_Sel>Line_4</Direct_Sel></List_Control></USB></YAMAHA_AV>"
+
+  # Page Down
+  if [ "$1" != "" ] && [ "$1" -ge 1 ] && [ "$1" -le 50 ]; then
+    for (( i=1; i<=${1}; i++ )); do
+      ampCall "<YAMAHA_AV cmd=\"PUT\"><USB><List_Control><Page>Down</Page></List_Control></USB></YAMAHA_AV>"
+    done
+  fi
+  # Select
+  if [ "$2" != "" ] && [ "$2" -ge 1 ] && [ "$2" -le 8 ]; then
+    ampCall "<YAMAHA_AV cmd=\"PUT\"><USB><List_Control><Direct_Sel>Line_${2}</Direct_Sel></List_Control></USB></YAMAHA_AV>"
+  fi
+  # Page Down
+  if [ "$3" != "" ] && [ "$3" -ge 1 ] && [ "$3" -le 50 ]; then
+    for (( i=1; i<=${3}; i++ )); do
+      ampCall "<YAMAHA_AV cmd=\"PUT\"><USB><List_Control><Page>Down</Page></List_Control></USB></YAMAHA_AV>"
+    done
+  fi
+  # Select
+  if [ "$4" != "" ] && [ "$4" -ge 1 ] && [ "$4" -le 8 ]; then
+    ampCall "<YAMAHA_AV cmd=\"PUT\"><USB><List_Control><Direct_Sel>Line_${4}</Direct_Sel></List_Control></USB></YAMAHA_AV>"
+  fi
+  # Select (Play) from firest entryFirst Entry
+  ampCall "<YAMAHA_AV cmd=\"PUT\"><USB><List_Control><Direct_Sel>Line_1</Direct_Sel></List_Control></USB></YAMAHA_AV>"
+
+}
+
+function playMusic {
+  case "$1" in
+    abba)
+      ampPlaySecularMusic 0 1 0 1
+      ;;
+    abba2)
+      ampPlaySecularMusic 0 1 0 2
+      ;;
+    aerosmith)
+      ampPlaySecularMusic 0 2 0 1
+      ;;
+    alanis)
+      ampPlaySecularMusic 0 3 0 1
+      ;;
+    burke)
+      ampPlaySecularMusic 0 4 0 1
+      ;;
+    all-saints)
+      ampPlaySecularMusic 0 5 0 1
+      ;;
+    allman)
+      ampPlaySecularMusic 0 6 0 1
+      ;;
+    amy-grant)
+      ampPlaySecularMusic 0 7 0 1
+      ;;
+    amy-grant2)
+      ampPlaySecularMusic 0 7 0 2
+      ;;
+    amy-grant3)
+      ampPlaySecularMusic 0 7 0 3
+      ;;
+    annie-lennox)
+      ampPlaySecularMusic 0 8 0 1
+      ;;
+    annie-lennox2)
+      ampPlaySecularMusic 0 8 0 2
+      ;;
+    annie-lennox3)
+      ampPlaySecularMusic 0 8 0 3
+      ;;
+    annie-lennox4)
+      ampPlaySecularMusic 0 8 0 4
+      ;;
+    aretha-franklin)
+      ampPlaySecularMusic 1 1 0 1
+      ;;
+    atomic-kitten)
+      ampPlaySecularMusic 1 2 0 1
+      ;;
+    bbc)
+      ampPlaySecularMusic 1 3 0 1
+      ;;
+    baby-einstein)
+      ampPlaySecularMusic 1 4 0 1
+      ;;
+    beautiful-south)
+      ampPlaySecularMusic 1 5 0 1
+      ;;
+    beautiful-south2)
+      ampPlaySecularMusic 1 5 0 2
+      ;;
+    belinda-carlisle)
+      ampPlaySecularMusic 1 6 0 1
+      ;;
+    benny-anderson)
+      ampPlaySecularMusic 1 7 0 1
+      ;;
+    beyonce)
+      ampPlaySecularMusic 1 8 0 1
+      ;;
+    bill-withers)
+      ampPlaySecularMusic 2 1 0 1
+      ;;
+    bix-beiderbecke)
+      ampPlaySecularMusic 2 2 0 1
+      ;;
+    blondie)
+      ampPlaySecularMusic 2 3 0 1
+      ;;
+    blondie)
+      ampPlaySecularMusic 2 3 0 2
+      ;;
+    blur)
+      ampPlaySecularMusic 2 4 0 1
+      ;;
+    blur2)
+      ampPlaySecularMusic 2 4 0 2
+      ;;
+    bon-jovi)
+      ampPlaySecularMusic 2 5 0 3
+      ;;
+    bon-jovi2)
+      ampPlaySecularMusic 2 5 0 1
+      ;;
+    bon-jovi3)
+      ampPlaySecularMusic 2 5 0 2
+      ;;
+    bond)
+      ampPlaySecularMusic 2 6 0 1
+      ;;
+    bond2)
+      ampPlaySecularMusic 2 6 0 2
+      ;;
+    bread)
+      ampPlaySecularMusic 2 7 0 1
+      ;;
+    bruce-springsteen)
+      ampPlaySecularMusic 2 8 0 1
+      ;;
+    bryan-adams)
+      ampPlaySecularMusic 3 1 0 1
+      ;;
+    roxy)
+      ampPlaySecularMusic 3 2 0 1
+      ;;
+    carpenters)
+      ampPlaySecularMusic 3 3 0 1
+      ;;
+    catatonia)
+      ampPlaySecularMusic 3 4 0 1
+      ;;
+    catatonia2)
+      ampPlaySecularMusic 3 4 0 2
+      ;;
+    celine-dion)
+      ampPlaySecularMusic 3 5 0 1
+      ;;
+    celine-dion2)
+      ampPlaySecularMusic 3 5 0 2
+      ;;
+    charlotte-church)
+      ampPlaySecularMusic 3 6 0 1
+      ;;
+    cher)
+      ampPlaySecularMusic 3 7 0 1
+      ;;
+    chieftains)
+      ampPlaySecularMusic 3 8 0 1
+      ;;
+    clannad)
+      ampPlaySecularMusic 4 1 0 1
+      ;;
+    connells)
+      ampPlaySecularMusic 4 2 0 1
+      ;;
+    corinne)
+      ampPlaySecularMusic 4 3 0 1
+      ;;
+    corrs)
+      ampPlaySecularMusic 4 4 0 1
+      ;;
+    corrs2)
+      ampPlaySecularMusic 4 4 0 2
+      ;;
+    cranberries)
+      ampPlaySecularMusic 4 5 0 1
+      ;;
+    cranberries2)
+      ampPlaySecularMusic 4 5 0 2
+      ;;
+    crowded-house)
+      ampPlaySecularMusic 4 6 0 1
+      ;;
+    deacon-blue)
+      ampPlaySecularMusic 4 7 0 1
+      ;;
+    delta)
+      ampPlaySecularMusic 4 8 0 1
+      ;;
+    delta2)
+      ampPlaySecularMusic 4 8 0 2
+      ;;
+    dido)
+      ampPlaySecularMusic 5 1 0 1
+      ;;
+    dido2)
+      ampPlaySecularMusic 5 1 0 2
+      ;;
+    dido3)
+      ampPlaySecularMusic 5 1 0 3
+      ;;
+    dina)
+      ampPlaySecularMusic 5 2 0 1
+      ;;
+    dixie)
+      ampPlaySecularMusic 5 3 0 1
+      ;;
+    don-henley)
+      ampPlaySecularMusic 5 4 0 1
+      ;;
+    duran)
+      ampPlaySecularMusic 5 5 0 1
+      ;;
+    duran2)
+      ampPlaySecularMusic 5 5 0 2
+      ;;
+    edie-brickell)
+      ampPlaySecularMusic 5 6 0 1
+      ;;
+    elvis)
+      ampPlaySecularMusic 5 7 0 2
+      ;;
+    elvis)
+      ampPlaySecularMusic 5 7 0 1
+      ;;
+    enya)
+      ampPlaySecularMusic 5 8 0 4
+      ;;
+    enya-celts)
+      ampPlaySecularMusic 5 8 0 4
+      ;;
+    enya2)
+      ampPlaySecularMusic 5 8 0 2
+      ;;
+    enya-winter)
+      ampPlaySecularMusic 5 8 0 2
+      ;;
+    enya3)
+      ampPlaySecularMusic 5 8 0 1
+      ;;
+    enya-day)
+      ampPlaySecularMusic 5 8 0 1
+      ;;
+    enya4)
+      ampPlaySecularMusic 5 8 0 3
+      ;;
+    enya-paint)
+      ampPlaySecularMusic 5 8 0 3
+      ;;
+    era)
+      ampPlaySecularMusic 6 1 0 1
+      ;;
+    era2)
+      ampPlaySecularMusic 6 1 0 2
+      ;;
+    erasure)
+      ampPlaySecularMusic 6 2 0 1
+      ;;
+    eternal2)
+      ampPlaySecularMusic 6 3 0 2
+      ;;
+    eternal3)
+      ampPlaySecularMusic 6 3 0 3
+      ;;
+    eurythmics)
+      ampPlaySecularMusic 6 4 0 1
+      ;;
+    eurythmics2)
+      ampPlaySecularMusic 6 4 0 2
+      ;;
+    eurythmics3)
+      ampPlaySecularMusic 6 4 0 3
+      ;;
+    fyc)
+      ampPlaySecularMusic 6 5 0 1
+      ;;
+    flanders)
+      ampPlaySecularMusic 6 6 0 1
+      ;;
+    fleetwood-mac)
+      ampPlaySecularMusic 6 7 0 1
+      ;;
+    free-the-spirit)
+      ampPlaySecularMusic 6 8 0 1
+      ;;
+    g4)
+      ampPlaySecularMusic 7 1 0 1
+      ;;
+    g42)
+      ampPlaySecularMusic 7 1 0 2
+      ;;
+    gabrielle)
+      ampPlaySecularMusic 7 2 0 1
+      ;;
+    genesis)
+      ampPlaySecularMusic 7 3 0 1
+      ;;
+    george-michael)
+      ampPlaySecularMusic 7 4 0 1
+      ;;
+    george-michael2)
+      ampPlaySecularMusic 7 4 0 2
+      ;;
+    gipsy-kings)
+      ampPlaySecularMusic 7 5 0 1
+      ;;
+    glenn-miller)
+      ampPlaySecularMusic 7 6 0 1
+      ;;
+    gloria-esterfan)
+      ampPlaySecularMusic 7 7 0 1
+      ;;
+    go-west)
+      ampPlaySecularMusic 7 8 0 1
+      ;;
+    guns)
+      ampPlaySecularMusic 8 1 0 1
+      ;;
+    hank-marvin)
+      ampPlaySecularMusic 8 2 0 1
+      ;;
+    hank-marvin)
+      ampPlaySecularMusic 8 2 0 2
+      ;;
+    hanson)
+      ampPlaySecularMusic 8 3 0 1
+      ;;
+    hot-chocolate)
+      ampPlaySecularMusic 8 4 0 1
+      ;;
+    housemartins)
+      ampPlaySecularMusic 8 5 0 1
+      ;;
+    human-league)
+      ampPlaySecularMusic 8 6 0 1
+      ;;
+    jackson5)
+      ampPlaySecularMusic 8 7 0 1
+      ;;
+    james-blunt)
+      ampPlaySecularMusic 8 8 0 1
+      ;;
+    james-gallway)
+      ampPlaySecularMusic 9 1 0 1
+      ;;
+    jeniffer-paige)
+      ampPlaySecularMusic 9 2 0 1
+      ;;
+    john-lee-hooker)
+      ampPlaySecularMusic 9 3 0 1
+      ;;
+    john-rutter)
+      ampPlaySecularMusic 9 4 0 1
+      ;;
+    john-rutter2)
+      ampPlaySecularMusic 9 4 0 2
+      ;;
+    josss-stone)
+      ampPlaySecularMusic 9 5 0 1
+      ;;
+    journey)
+      ampPlaySecularMusic 9 6 0 1
+      ;;
+    kt-tunstall)
+      ampPlaySecularMusic 9 7 0 1
+      ;;
+    kt-tunstall2)
+      ampPlaySecularMusic 9 7 0 2
+      ;;
+    katie-melua)
+      ampPlaySecularMusic 9 8 0 1
+      ;;
+    katrina-waves)
+      ampPlaySecularMusic 10 1 0 1
+      ;;
+    keane)
+      ampPlaySecularMusic 10 2 0 1
+      ;;
+    kelly-clarkson)
+      ampPlaySecularMusic 10 3 0 1
+      ;;
+    kennyg)
+      ampPlaySecularMusic 10 4 0 1
+      ;;
+    kiss)
+      ampPlaySecularMusic 10 5 0 1
+      ;;
+    leann-rimes)
+      ampPlaySecularMusic 10 6 0 1
+      ;;
+    lighthouse)
+      ampPlaySecularMusic 10 7 0 1
+      ;;
+    lightening-seeds)
+      ampPlaySecularMusic 10 8 0 1
+      ;;
+    lisa-stansfield)
+      ampPlaySecularMusic 11 1 0 1
+      ;;
+    lisa-stansfield2)
+      ampPlaySecularMusic 11 1 0 2
+      ;;
+    lucie-silvas)
+      ampPlaySecularMusic 11 2 0 1
+      ;;
+    lynyrd)
+      ampPlaySecularMusic 11 3 0 1
+      ;;
+    mpeople)
+      ampPlaySecularMusic 11 4 0 1
+      ;;
+    madness)
+      ampPlaySecularMusic 11 5 0 1
+      ;;
+    madness2)
+      ampPlaySecularMusic 11 5 0 2
+      ;;
+    madonna)
+      ampPlaySecularMusic 11 6 0 1
+      ;;
+    mariah-carrey)
+      ampPlaySecularMusic 11 7 0 1
+      ;;
+    mariah-carrey2)
+      ampPlaySecularMusic 11 7 0 2
+      ;;
+    mariah-carrey3)
+      ampPlaySecularMusic 11 7 0 3
+      ;;
+    michael-jackson)
+      ampPlaySecularMusic 11 8 0 1
+      ;;
+    moby)
+      ampPlaySecularMusic 12 1 0 1
+      ;;
+    moonlight-moods)
+      ampPlaySecularMusic 12 2 0 1
+      ;;
+    natalie-imbruglia)
+      ampPlaySecularMusic 12 3 0 1
+      ;;
+    nina-simone)
+      ampPlaySecularMusic 12 4 0 1
+      ;;
+    norah-jones)
+      ampPlaySecularMusic 12 5 0 1
+      ;;
+    oasis)
+      ampPlaySecularMusic 12 6 0 1
+      ;;
+    oasis2)
+      ampPlaySecularMusic 12 6 0 2
+      ;;
+    paul-young)
+      ampPlaySecularMusic 12 7 0 1
+      ;;
+    phil-collins)
+      ampPlaySecularMusic 12 8 0 1
+      ;;
+    phil-collins2)
+      ampPlaySecularMusic 12 8 0 2
+      ;;
+    phil-collins3)
+      ampPlaySecularMusic 12 8 0 3
+      ;;
+    phil-collins4)
+      ampPlaySecularMusic 12 8 0 4
+      ;;
+    pierre-belmonde)
+      ampPlaySecularMusic 13 1 0 1
+      ;;
+    queen)
+      ampPlaySecularMusic 13 2 0 1
+      ;;
+    queen2)
+      ampPlaySecularMusic 13 2 0 2
+      ;;
+    queen3)
+      ampPlaySecularMusic 13 2 0 3
+      ;;
+    rembrandts)
+      ampPlaySecularMusic 13 3 0 1
+      ;;
+    roberta-flack)
+      ampPlaySecularMusic 13 4 0 1
+      ;;
+    ronan-keeting)
+      ampPlaySecularMusic 13 5 0 1
+      ;;
+    roxette)
+      ampPlaySecularMusic 13 6 0 1
+      ;;
+    sclub7)
+      ampPlaySecularMusic 13 7 0 1
+      ;;
+    savage-garden)
+      ampPlaySecularMusic 13 8 0 1
+      ;;
+    scissor-sisters)
+      ampPlaySecularMusic 14 1 0 1
+      ;;
+    seal)
+      ampPlaySecularMusic 14 2 0 1
+      ;;
+    secret-garden)
+      ampPlaySecularMusic 14 3 0 1
+      ;;
+    secret-garden2)
+      ampPlaySecularMusic 14 3 0 2
+      ;;
+    secret-garden3)
+      ampPlaySecularMusic 14 3 0 3
+      ;;
+    shadows)
+      ampPlaySecularMusic 14 4 0 1
+      ;;
+    shadows2)
+      ampPlaySecularMusic 14 4 0 2
+      ;;
+    shadows3)
+      ampPlaySecularMusic 14 4 0 3
+      ;;
+    shania-twain)
+      ampPlaySecularMusic 14 5 0 1
+      ;;
+    shania-twain2)
+      ampPlaySecularMusic 14 5 0 2
+      ;;
+    shania-twain3)
+      ampPlaySecularMusic 14 5 0 3
+      ;;
+    shania-twain4)
+      ampPlaySecularMusic 14 5 0 4
+      ;;
+    shania-twain5)
+      ampPlaySecularMusic 14 5 0 5
+      ;;
+    sheryl-crow)
+      ampPlaySecularMusic 14 6 0 1
+      ;;
+    sheryl-crow2)
+      ampPlaySecularMusic 14 6 0 2
+      ;;
+    simon-and-garfunkel)
+      ampPlaySecularMusic 14 7 0 1
+      ;;
+    simply-red)
+      ampPlaySecularMusic 14 8 0 1
+      ;;
+    simply-red2)
+      ampPlaySecularMusic 14 8 0 2
+      ;;
+    sky)
+      ampPlaySecularMusic 15 1 0 1
+      ;;
+    sky2)
+      ampPlaySecularMusic 15 1 0 2
+      ;;
+    snow-patrol)
+      ampPlaySecularMusic 15 2 0 1
+      ;;
+    ally-christmas)
+      ampPlaySecularMusic 15 3 0 1
+      ;;
+    ally-mcbeal)
+      ampPlaySecularMusic 15 3 0 2
+      ;;
+    blues-brothers)
+      ampPlaySecularMusic 15 3 0 3
+      ;;
+    bodyguard)
+      ampPlaySecularMusic 15 3 0 4
+      ;;
+    bridget-jones)
+      ampPlaySecularMusic 15 3 0 5
+      ;;
+    cold-feet)
+      ampPlaySecularMusic 15 3 0 6
+      ;;
+    frozen)
+      ampPlaySecularMusic 15 3 0 7
+      ;;
+    lion-king)
+      ampPlaySecularMusic 15 3 0 8
+      ;;
+    lotr)
+      ampPlaySecularMusic 15 3 1 1
+      ;;
+    lotr2)
+      ampPlaySecularMusic 15 3 1 2
+      ;;
+    lotr3)
+      ampPlaySecularMusic 15 3 1 3
+      ;;
+    matrix)
+      ampPlaySecularMusic 15 3 1 4
+      ;;
+    matrix2)
+      ampPlaySecularMusic 15 3 1 5
+      ;;
+    romeo-and-juliet)
+      ampPlaySecularMusic 15 3 1 6
+      ;;
+    prince-of-egypt)
+      ampPlaySecularMusic 15 3 1 7
+      ;;
+    snowman)
+      ampPlaySecularMusic 15 3 1 8
+      ;;
+    titanic)
+      ampPlaySecularMusic 15 3 2 1
+      ;;
+    top-gun)
+      ampPlaySecularMusic 15 3 2 2
+      ;;
+    status-quo)
+      ampPlaySecularMusic 15 4 0 1
+      ;;
+    status-quo2)
+      ampPlaySecularMusic 15 4 0 2
+      ;;
+    status-quo3)
+      ampPlaySecularMusic 15 4 0 3
+      ;;
+    status-quo4)
+      ampPlaySecularMusic 15 4 0 4
+      ;;
+    sting)
+      ampPlaySecularMusic 15 5 0 1
+      ;;
+    tpau)
+      ampPlaySecularMusic 15 6 0 1
+      ;;
+    take-that)
+      ampPlaySecularMusic 15 7 0 1
+      ;;
+    texas)
+      ampPlaySecularMusic 15 8 0 1
+      ;;
+    texas2)
+      ampPlaySecularMusic 15 8 0 2
+      ;;
+    darkness)
+      ampPlaySecularMusic 16 1 0 1
+      ;;
+    they-might-be-giants)
+      ampPlaySecularMusic 16 3 0 1
+      ;;
+    thin-lizzy)
+      ampPlaySecularMusic 16 4 0 1
+      ;;
+    tina-tuner)
+      ampPlaySecularMusic 16 5 0 1
+      ;;
+    tom-jones)
+      ampPlaySecularMusic 16 6 0 1
+      ;;
+    tom-jones2)
+      ampPlaySecularMusic 16 6 0 2
+      ;;
+    toploader)
+      ampPlaySecularMusic 16 7 0 1
+      ;;
+    tori-amos)
+      ampPlaySecularMusic 16 8 0 1
+      ;;
+    tracy-chapman)
+      ampPlaySecularMusic 17 1 0 1
+      ;;
+    u2)
+      ampPlaySecularMusic 17 2 0 1
+      ;;
+    u22)
+      ampPlaySecularMusic 17 2 0 2
+      ;;
+    ub40)
+      ampPlaySecularMusic 17 3 0 1
+      ;;
+    van-halen)
+      ampPlaySecularMusic 17 4 0 1
+      ;;
+    vangelis)
+      ampPlaySecularMusic 17 5 0 1
+      ;;
+    vangelis2)
+      ampPlaySecularMusic 17 5 0 2
+      ;;
+    love1)
+      ampPlaySecularMusic 17 6 0 2
+      ;;
+    love2)
+      ampPlaySecularMusic 17 6 0 3
+      ;;
+    love3)
+      ampPlaySecularMusic 17 6 0 4
+      ;;
+    woman)
+      ampPlaySecularMusic 17 6 0 5
+      ;;
+    woman2)
+      ampPlaySecularMusic 17 6 0 6
+      ;;
+    brit89)
+      ampPlaySecularMusic 17 6 0 7
+      ;;
+    brit90)
+      ampPlaySecularMusic 17 6 0 8
+      ;;
+    brit90)
+      ampPlaySecularMusic 17 6 0 8
+      ;;
+    brit91)
+      ampPlaySecularMusic 17 6 1 1
+      ;;
+    brit92)
+      ampPlaySecularMusic 17 6 1 2
+      ;;
+    brit93)
+      ampPlaySecularMusic 17 6 1 3
+      ;;
+    brit94)
+      ampPlaySecularMusic 17 6 1 4
+      ;;
+    brit95)
+      ampPlaySecularMusic 17 6 1 5
+      ;;
+    brit01)
+      ampPlaySecularMusic 17 6 1 6
+      ;;
+    celtic)
+      ampPlaySecularMusic 17 6 1 7
+      ;;
+    christmas)
+      ampPlaySecularMusic 17 6 1 8
+      ;;
+    christmasstars)
+      ampPlaySecularMusic 17 6 2 1
+      ;;
+    electric)
+      ampPlaySecularMusic 17 6 2 2
+      ;;
+    moods)
+      ampPlaySecularMusic 17 6 2 3
+      ;;
+    moods-mellow)
+      ampPlaySecularMusic 17 6 2 4
+      ;;
+    moods-tranquil)
+      ampPlaySecularMusic 17 6 2 5
+      ;;
+    80s)
+      ampPlaySecularMusic 17 6 2 6
+      ;;
+    rock-and-roll)
+      ampPlaySecularMusic 17 6 2 7
+      ;;
+    lazy-sunday)
+      ampPlaySecularMusic 17 6 2 8
+      ;;
+    legends)
+      ampPlaySecularMusic 17 6 3 1
+      ;;
+    lounge-paradisiac)
+      ampPlaySecularMusic 17 6 3 2
+      ;;
+    love-album-classics)
+      ampPlaySecularMusic 17 6 3 3
+      ;;
+    love-legends)
+      ampPlaySecularMusic 17 6 3 4
+      ;;
+    millenium)
+      ampPlaySecularMusic 17 6 3 5
+      ;;
+    milleniium2)
+      ampPlaySecularMusic 17 6 3 6
+      ;;
+    nellie)
+      ampPlaySecularMusic 17 6 3 7
+      ;;
+    pure)
+      ampPlaySecularMusic 17 6 3 8
+      ;;
+    now18)
+      ampPlaySecularMusic 17 6 4 1
+      ;;
+    now22)
+      ampPlaySecularMusic 17 6 4 2
+      ;;
+    now23)
+      ampPlaySecularMusic 17 6 4 3
+      ;;
+    now26)
+      ampPlaySecularMusic 17 6 4 4
+      ;;
+    now27)
+      ampPlaySecularMusic 17 6 4 5
+      ;;
+    now28)
+      ampPlaySecularMusic 17 6 4 6
+      ;;
+    now29)
+      ampPlaySecularMusic 17 6 4 7
+      ;;
+    now30)
+      ampPlaySecularMusic 17 6 4 8
+      ;;
+    now31)
+      ampPlaySecularMusic 17 6 5 1
+      ;;
+    now32)
+      ampPlaySecularMusic 17 6 5 2
+      ;;
+    now33)
+      ampPlaySecularMusic 17 6 5 3
+      ;;
+    now34)
+      ampPlaySecularMusic 17 6 5 4
+      ;;
+    now35)
+      ampPlaySecularMusic 17 6 5 5
+      ;;
+    now36)
+      ampPlaySecularMusic 17 6 5 6
+      ;;
+    now37)
+      ampPlaySecularMusic 17 6 5 7
+      ;;
+    now38)
+      ampPlaySecularMusic 17 6 5 8
+      ;;
+    now39)
+      ampPlaySecularMusic 17 6 6 1
+      ;;
+    now40)
+      ampPlaySecularMusic 17 6 6 2
+      ;;
+    now41)
+      ampPlaySecularMusic 17 6 6 3
+      ;;
+    now42)
+      ampPlaySecularMusic 17 6 6 4
+      ;;
+    now43)
+      ampPlaySecularMusic 17 6 6 5
+      ;;
+    now44)
+      ampPlaySecularMusic 17 6 6 6
+      ;;
+    now45)
+      ampPlaySecularMusic 17 6 6 7
+      ;;
+    now46)
+      ampPlaySecularMusic 17 6 6 8
+      ;;
+    now47)
+      ampPlaySecularMusic 17 6 7 1
+      ;;
+    now48)
+      ampPlaySecularMusic 17 6 7 2
+      ;;
+    now49)
+      ampPlaySecularMusic 17 6 7 3
+      ;;
+    now50)
+      ampPlaySecularMusic 17 6 7 4
+      ;;
+    now51)
+      ampPlaySecularMusic 17 6 7 5
+      ;;
+    now52)
+      ampPlaySecularMusic 17 6 7 6
+      ;;
+    now53)
+      ampPlaySecularMusic 17 6 7 7
+      ;;
+    now54)
+      ampPlaySecularMusic 17 6 7 8
+      ;;
+    now55)
+      ampPlaySecularMusic 17 6 8 1
+      ;;
+    now56)
+      ampPlaySecularMusic 17 6 8 2
+      ;;
+    now57)
+      ampPlaySecularMusic 17 6 8 3
+      ;;
+    now58)
+      ampPlaySecularMusic 17 6 8 4
+      ;;
+    now59)
+      ampPlaySecularMusic 17 6 8 5
+      ;;
+    now60)
+      ampPlaySecularMusic 17 6 8 6
+      ;;
+    now61)
+      ampPlaySecularMusic 17 6 8 7
+      ;;
+    now62)
+      ampPlaySecularMusic 17 6 8 8
+      ;;
+    now63)
+      ampPlaySecularMusic 17 6 9 1
+      ;;
+    now64)
+      ampPlaySecularMusic 17 6 9 2
+      ;;
+    now65)
+      ampPlaySecularMusic 17 6 9 3
+      ;;
+    now66)
+      ampPlaySecularMusic 17 6 9 4
+      ;;
+    now67)
+      ampPlaySecularMusic 17 6 9 5
+      ;;
+    now68)
+      ampPlaySecularMusic 17 6 9 6
+      ;;
+    now69)
+      ampPlaySecularMusic 17 6 9 7
+      ;;
+    now70)
+      ampPlaySecularMusic 17 6 9 8
+      ;;
+    now71)
+      ampPlaySecularMusic 17 6 10 1
+      ;;
+    now72)
+      ampPlaySecularMusic 17 6 10 2
+      ;;
+    now73)
+      ampPlaySecularMusic 17 6 10 3
+      ;;
+    now74)
+      ampPlaySecularMusic 17 6 10 4
+      ;;
+    now75)
+      ampPlaySecularMusic 17 6 10 5
+      ;;
+    now76)
+      ampPlaySecularMusic 17 6 10 6
+      ;;
+    now77)
+      ampPlaySecularMusic 17 6 10 7
+      ;;
+    now78)
+      ampPlaySecularMusic 17 6 10 8
+      ;;
+    perfect-day)
+      ampPlaySecularMusic 17 6 11 1
+      ;;
+    ready-steady-go)
+      ampPlaySecularMusic 17 6 11 2
+      ;;
+    sax-passionate)
+      ampPlaySecularMusic 17 6 11 3
+      ;;
+    sax-romantic)
+      ampPlaySecularMusic 17 6 11 4
+      ;;
+    sax-tender)
+      ampPlaySecularMusic 17 6 11 5
+      ;;
+    soul)
+      ampPlaySecularMusic 17 6 11 6
+      ;;
+    status-quo-and-friends)
+      ampPlaySecularMusic 17 6 11 7
+      ;;
+    summer-breeze)
+      ampPlaySecularMusic 17 6 11 8
+      ;;
+    best-of-legends)
+      ampPlaySecularMusic 17 6 12 1
+      ;;
+    top-gear)
+      ampPlaySecularMusic 17 6 12 2
+      ;;
+    top-gear2)
+      ampPlaySecularMusic 17 6 12 3
+      ;;
+    ultimate-80s)
+      ampPlaySecularMusic 17 6 12 4
+      ;;
+    unforgettable-love-songs)
+      ampPlaySecularMusic 17 6 12 5
+      ;;
+    world-lounge-bar)
+      ampPlaySecularMusic 17 6 12 6
+      ;;
+    world-lounge-chill)
+      ampPlaySecularMusic 17 6 12 7
+      ;;
+    world-lounge-club)
+      ampPlaySecularMusic 17 6 12 8
+      ;;
+    verve)
+      ampPlaySecularMusic 17 7 0 1
+      ;;
+    victor-borge)
+      ampPlaySecularMusic 17 8 0 1
+      ;;
+    vonda-shepard)
+      ampPlaySecularMusic 18 1 0 1
+      ;;
+    vonda-shepard2)
+      ampPlaySecularMusic 18 1 0 2
+      ;;
+    vonda-shepard3)
+      ampPlaySecularMusic 18 1 0 3
+      ;;
+    westlife)
+      ampPlaySecularMusic 18 2 0 1
+      ;;
+    wetwetwet)
+      ampPlaySecularMusic 18 3 0 2
+      ;;
+    wetwetwet2)
+      ampPlaySecularMusic 18 3 0 1
+      ;;
+    wham)
+      ampPlaySecularMusic 18 4 0 1
+      ;;
+    womack)
+      ampPlaySecularMusic 18 5 0 1
+      ;;
+    *)
+      echo "Unrecognised album"
+  esac
+}
+
+
+case "$1" in
+  on)
+    ampOn
+    ;;
+  off)
+    ampOff
+    ;;
+  pause)
+    ampPause
+    ;;
+  vol)
+    ampVol "$2"
+    ;;
+  status)
+    ampStatus
+    ;;
+  usb)
+    ampUsbInput
+    ;;
+  play)
+    playMusic "$2"
+    ;;
+  listAlbums)
+    grep '    [a-zA-Z0-9-]*)' ${0} | sed 's/\s*//' | sed 's/)//'
+    ;;
+  *)
+    echo "Usage ${0} {on|off|pause|listAlbums|usb|status|vol <dB*10>|play <album>}"
+    ;;
+esac
+
